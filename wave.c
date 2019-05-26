@@ -2,7 +2,7 @@
  * wave.c - EGB240DVR Library, WAVE file interface
  *
  * Provides an interface to read and write WAVE files to an SD card via
- * the FATFS library. This implementation hardcodes the WAVE filename 
+ * the FATFS library. This implementation hardcodes the WAVE filename
  * to "EGB240.WAV" in the root directory of the SD card.
  *
  * Requires:
@@ -23,7 +23,7 @@
  *    Date: 10/04/2016
  *  Author: Mark Broadmeadow
  *  E-mail: mark.broadmeadow@qut.edu.au
- */ 
+ */
 
 /************************************************************************/
 /* INCLUDED LIBRARIES/HEADER FILES                                      */
@@ -51,6 +51,9 @@ volatile uint32_t sampleCount = 0;	// Sample counter (used to finalise WAVE head
 
 uint8_t finaliseHeader = 0;			// Flag to indicate header must be updated/finalised
 
+uint8_t numRecordings = 1;
+uint8_t currentRecording = 0;
+
 /************************************************************************/
 /* FUNCTION PROTOTYPES                                                  */
 /************************************************************************/
@@ -65,10 +68,10 @@ void initialise_header(uint32_t samplerate, uint8_t bps, uint8_t channels);
 
 /**
  * Function: set_char_array
- * 
- * Utility function. Copies first four characters of a null terminated string 
+ *
+ * Utility function. Copies first four characters of a null terminated string
  * into a destination character array. Used to operate on WAVE file headers.
- * 
+ *
  * Parameters:
  *   array - Destination array.
  *   string - Source string.
@@ -81,11 +84,11 @@ void set_char_array(char* array, char* string) {
 
 /**
  * Function: initialise_header
- * 
+ *
  * Initialiases the header of a WAVE file using supplied parameters.
  * Header must be finalised using "finalise_header" once all audio
  * samples are written to the file.
- * 
+ *
  * Parameters:
  *   samplerate - Sample rate of the WAVE file.
  *   bps - Bits per sample.
@@ -95,8 +98,8 @@ void initialise_header(uint32_t samplerate, uint8_t bps, uint8_t channels) {
 	set_char_array(waveHeader.fields.ChunkID, "RIFF");
 	waveHeader.fields.ChunkSize = 0;	// placeholder, update when number of samples is known (36 + dataSize)
 	set_char_array(waveHeader.fields.Format, "WAVE");
-	
-	set_char_array(waveHeader.fields.fmtID, "fmt ");	
+
+	set_char_array(waveHeader.fields.fmtID, "fmt ");
 	waveHeader.fields.fmtSize = 16;		// for PCM
 	waveHeader.fields.AudioFormat = 1;	// PCM
 	waveHeader.fields.NumChannels = channels;
@@ -104,51 +107,51 @@ void initialise_header(uint32_t samplerate, uint8_t bps, uint8_t channels) {
 	waveHeader.fields.ByteRate = samplerate*channels*(bps>>3);
 	waveHeader.fields.BlockAlign = channels*(bps>>3);
 	waveHeader.fields.BitsPerSample = bps;
-	
+
 	set_char_array(waveHeader.fields.dataID, "data");
 	waveHeader.fields.dataSize = 0;		// placeholder, update with NumSamples * BlockAlign
 }
 
 /**
  * Function: write_wave_header
- * 
+ *
  * Writes a WAVE header structure into an open file.
  * Wave configuration is hardcoded to 15625 samples per second, 8 bits per sample, mono.
  */
 void write_wave_header() {
 	FRESULT result;
 	uint16_t bw;
-	
+
 	initialise_header(15625, 8, 1);	// Create header for 15.625 kHz, 8-bit per sample, mono WAVE file
 	result = f_write(&file, &(waveHeader.bytes), 44, &bw); // Write header to file
 
 	// If error has occurred, write status to console
 	if (result) printf("f_write returned error code: %d\n", result);
 	if (bw != 44) printf("f_write wrote %d of 44 bytes to file.", bw);
-	
+
 	// Flag that header requires finalisation
 	finaliseHeader = 1;
 }
 
 /**
  * Function: read_wave_header
- * 
+ *
  * Reads a WAVE header from an open file into a structure.
- * 
+ *
  * Returns: The number of samples in the opened wave file (as reported in the header)
  */
 uint32_t read_wave_header() {
 	FRESULT result;
 	uint16_t br;
-	
+
 	// Read header from WAVE file into structure
 	result = f_read(&file, &(waveHeader.bytes), 44, &br);
 
 	// If error has occurred, write status to console
 	if (result) printf("f_read returned error code: %d\n", result);
 	if (br != 44) printf("f_read read %d of 44 bytes from file.", br);
-	
-	
+
+
 	if (result | (br != 44)) {
 		// Return "empty" wave file if read is unsuccessful
 		return 0;
@@ -159,17 +162,17 @@ uint32_t read_wave_header() {
 
 /**
  * Function: finalise_wave_header
- * 
+ *
  * Finalises the header of an open WAVE file on the basis of the number of samples written to the file.
  */
 void finalise_wave_header() {
 	FRESULT result;
 	uint16_t bw;
-	
+
 	// Calculate header fields to update
 	uint32_t dataSize = sampleCount;
 	uint32_t chunkSize = 36 + dataSize;
-	
+
 	// Finalise wave file header
 	// Where errors occur, print to console
 	result = f_lseek(&file, 4);						// Seek to dataSize location
@@ -177,7 +180,7 @@ void finalise_wave_header() {
 	result = f_write(&file, &chunkSize, 4, &bw);	// Write dataSize field to file
 	if (result) printf("f_write returned error code: %d\n", result);
 	if (bw != 4) printf("f_write wrote %d of 4 bytes to file.", bw);
-	
+
 	result = f_lseek(&file, 40);					// Seek to chunkSize location
 	if (result) printf("f_lseek returned error code: %d\n", result);
 	result = f_write(&file, &dataSize, 4, &bw);		// Write chuckSize field to file
@@ -191,13 +194,13 @@ void finalise_wave_header() {
 
 /**
  * Function: wave_init
- * 
+ *
  * Initialises the WAVE module for use. Mounts the SD card for filesystem access.
  * Must be called prior to calling any other function in the WAVE module.
  */
 void wave_init() {
 	FRESULT result;
-	
+
 	result = f_mount(&fs, "/", 1);	// force mount SD card root directory
 
 	// If error occurs, write status to console
@@ -206,7 +209,7 @@ void wave_init() {
 
 /**
  * Function: wave_create
- * 
+ *
  * Creates a and initialises a WAVE file for read/write access.
  * The WAVE filename is hardcoded to "EGB240.WAV"
  * If a file with the same name exists it is overwritten and cleared.
@@ -217,23 +220,30 @@ void wave_init() {
  */
 void wave_create() {
 	FRESULT result;
-	
+
 	// Create new WAVE file with read/write access (force overwrite if file exists)
-	result = f_open(&file, "EGB240.WAV", FA_CREATE_ALWAYS | FA_READ | FA_WRITE);
+	char fileName[15];
+	sprintf(fileName, "EGB240_%d.WAV", numRecordings);
+	result = f_open(&file, fileName, FA_CREATE_ALWAYS | FA_READ | FA_WRITE);
 
 	// If error occurs, write status to console
-	if (result) printf("f_open returned error code: %d\n", result);
-	
+	if (result) {
+		printf("f_open returned error code: %d\n", result);
+	} else {
+		numRecordings++;
+		currentRecording = numRecordings - 1;
+	}
+
 	// Write WAVE file header to file
 	write_wave_header();
-	
+
 	// Reset sample counter
 	sampleCount = 0;
 }
 
 /**
  * Function: wave_open
- * 
+ *
  * Opens an existing WAVE file for read only access.
  * The WAVE filename is hardcoded to "EGB240.WAV"
  *
@@ -241,31 +251,40 @@ void wave_create() {
  */
 uint32_t wave_open() {
 	FRESULT result;
-	
+
 	// Open an existing WAVE file with read only access
-	result = f_open(&file, "EGB240.WAV", FA_READ);
+	char fileName[15];
+	sprintf(fileName, "EGB240_%d.WAV", currentRecording);
+	result = f_open(&file, fileName, FA_READ);
 
 	// If error occurs, write status to console
 	if (result) printf("f_open returned error code: %d\n", result);
-	
+
 	// Read the WAVE file header and return the number of samples reported
 	return read_wave_header();
 }
 
+void wave_skip() {
+	currentRecording++;
+	if (currentRecording == numRecordings) {
+		currentRecording = 0;
+	}
+}
+
 /**
  * Function: wave_close
- * 
+ *
  * Closes an open WAVE file. If required, the WAVE file header is finalised prior to closing.
  */
 void wave_close() {
 	FRESULT result;
-	
+
 	if (finaliseHeader) {
-		// Only finalise header where WAVE file is newly created 
+		// Only finalise header where WAVE file is newly created
 		finaliseHeader = 0;
 		finalise_wave_header();
 	}
-	
+
 	// Close WAVE file
 	result = f_close(&file);
 
@@ -275,7 +294,7 @@ void wave_close() {
 
 /**
  * Function: wave_write
- * 
+ *
  * Writes a number of audio samples into a open WAVE file.
  * This function expects 8-bit audio samples.
  *
@@ -286,12 +305,12 @@ void wave_close() {
 void wave_write(uint8_t* pSamples, uint16_t count) {
 	FRESULT result;
 	uint16_t bw;
-	
+
 	result = f_write(&file, pSamples, count, &bw); // Write samples to file
 
 	// If error occurs, write status to console
-	if (result) printf("f_write returned error code: %d\n", result);
-	if (bw != count) printf("f_write wrote %d of %d bytes to file.", bw, count);
+	if (result) printf("f_write returned error code: %d\n\r", result);
+	if (bw != count) printf("f_write wrote %d of %d bytes to file.\n\r", bw, count);
 
 	// Increment sample count by number of samples written to file
 	sampleCount += bw;
@@ -299,7 +318,7 @@ void wave_write(uint8_t* pSamples, uint16_t count) {
 
 /**
  * Function: wave_read
- * 
+ *
  * Reads a number of audio samples from an open WAVE file.
  * This function expects 8-bit audio samples.
  *
@@ -310,10 +329,10 @@ void wave_write(uint8_t* pSamples, uint16_t count) {
 void wave_read(uint8_t* pSamples, uint16_t count) {
 	FRESULT result;
 	uint16_t br;
-	
+
 	result = f_read(&file, pSamples, count, &br); // Read samples from file
 
 	// If error occurs, write status to console
-	if (result) printf("f_write returned error code: %d\n", result);
-	if (br != count) printf("f_write wrote %d of %d bytes to file.", br, count);
+	if (result) printf("f_read returned error code: %d\n\r", result);
+	if (br != count) printf("f_read read %d of %d bytes to file.\n\r", br, count);
 }
